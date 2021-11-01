@@ -40,7 +40,7 @@ int read_input(sack_object **objects, int *object_count, int *sack_capacity, int
 	fclose(fp);
 
 	*generations_count = (int) strtol(argv[2], NULL, 10);
-	
+
 	if (*generations_count == 0) {
 		free(tmp_objects);
 
@@ -154,6 +154,7 @@ void crossover(individual *parent1, individual *child1, int generation_index)
 	individual *parent2 = parent1 + 1;
 	individual *child2 = child1 + 1;
 	int count = 1 + generation_index % parent1->chromosome_length;
+
 
 	memcpy(child1->chromosomes, parent1->chromosomes, count * sizeof(int));
 	memcpy(child1->chromosomes + count, parent2->chromosomes + count, (parent1->chromosome_length - count) * sizeof(int));
