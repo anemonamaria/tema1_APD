@@ -12,6 +12,7 @@
 
 typedef struct auxStruct {
 	pthread_barrier_t *barrier;
+	pthread_mutex_t *mutex;
 	int thread_id;
 	sack_object *objects;
 	int object_count;
@@ -22,7 +23,7 @@ typedef struct auxStruct {
 } auxStruct;
 
 // alocam memorie
-auxStruct *init(pthread_barrier_t *barrier, int thread_id, sack_object *objects,
+auxStruct *init(pthread_barrier_t *barrier, pthread_mutex_t *mutex, int thread_id, sack_object *objects,
 				int object_count, int generations_count, int sack_capacity, int P) {
 	auxStruct *myStruct;
 	myStruct = malloc(sizeof(auxStruct));
@@ -44,6 +45,7 @@ auxStruct *init(pthread_barrier_t *barrier, int thread_id, sack_object *objects,
 	}
 
 	myStruct->barrier = barrier;
+	myStruct->mutex = mutex;
 	myStruct->thread_id = thread_id;
 	myStruct->objects = objects;
 	myStruct->object_count = object_count;
@@ -300,9 +302,11 @@ void *thread_function (void *arg) {
 		cursor = 0;
 
 		// compute fitness and sort by it
+		//pthread_mutex_lock(workStruct->mutex);
 		compute_fitness_function(workStruct->objects, workStruct->current_generation,
 			workStruct->object_count, workStruct->sack_capacity);
 		qsort(workStruct->current_generation, workStruct->object_count, sizeof(individual), cmpfunc); // TODO par this?
+		// pthread_mutex_unlock(workStruct->mutex);
 
 		 //my sort
 		/*if (start_qs % 2)
@@ -334,28 +338,36 @@ void *thread_function (void *arg) {
 
 		// keep first 30% children (elite children selection)
 		count = workStruct->object_count * 3 / 10;
+		//	pthread_mutex_lock(workStruct->mutex);
 		for (int i = 0; i < count; ++i) {
 			copy_individual(workStruct->current_generation + i, workStruct->next_generation + i);
 		}
 		cursor = count;
+		//	pthread_mutex_unlock(workStruct->mutex);
 		//pthread_barrier_wait(workStruct->barrier);
 
 
 		// mutate first 20% children with the first version of bit string mutation
+		// pthread_mutex_lock(workStruct->mutex);
 		count = workStruct->object_count * 2 / 10;
 		for (int i = 0; i < count; ++i) {
+
+
 			copy_individual(workStruct->current_generation + i, workStruct->next_generation + cursor + i);
 			mutate_bit_string_1(workStruct->next_generation + cursor + i, k);
 		}
 		cursor += count;
 		//pthread_barrier_wait(workStruct->barrier);
+			// pthread_mutex_unlock(workStruct->mutex);
 
 
 		// mutate next 20% children with the second version of bit string mutation
 		count = workStruct->object_count * 2 / 10;
 		for (int i = 0; i < count; ++i) {
+	//	pthread_mutex_lock(workStruct->mutex);
 			copy_individual(workStruct->current_generation + i + count, workStruct->next_generation + cursor + i);
 			mutate_bit_string_2(workStruct->next_generation + cursor + i, k);
+		// pthread_mutex_unlock(workStruct->mutex);
 		}
 		cursor += count;
 		//pthread_barrier_wait(workStruct->barrier);
@@ -379,21 +391,26 @@ void *thread_function (void *arg) {
 		}
 		//pthread_barrier_wait(workStruct->barrier);
 
+		// pthread_mutex_lock(workStruct->mutex);
 
 		// switch to new generation
 		tmp = workStruct->current_generation;
 		workStruct->current_generation = workStruct->next_generation;
 		workStruct->next_generation = tmp;
+		// pthread_mutex_unlock(workStruct->mutex);
 		//printf("%d ffffff  tid %d \n", current_generation[0].fitness, workStruct->thread_id);
 		for (int i = 0; i < workStruct->object_count; ++i) {
 			workStruct->current_generation[i].index = i;
 
 		}
 		pthread_barrier_wait(workStruct->barrier);
+		// pthread_mutex_lock(workStruct->mutex);
 
 		if (k % 5 == 0) {
 			print_best_fitness(workStruct->current_generation);
 		}
+		// pthread_mutex_unlock(workStruct->mutex);
+
 	}
 	//pthread_barrier_wait(workStruct->barrier);
 
@@ -401,9 +418,7 @@ void *thread_function (void *arg) {
 		compute_fitness_function(workStruct->objects, workStruct->current_generation,
 			workStruct->object_count, workStruct->sack_capacity);
 		qsort(workStruct->current_generation, workStruct->object_count, sizeof(individual), cmpfunc);
-		//printf("aaaaaaaaaaa");
 		print_best_fitness(workStruct->current_generation);
-
 
 		// free resources for old generation
 		free_generation(workStruct->current_generation);
@@ -441,15 +456,17 @@ int main(int argc, char *argv[])
 	// mine from here
 	pthread_t tid[P];
 	pthread_barrier_t barrier;
+	pthread_mutex_t mutex;
 
 	pthread_barrier_init(&barrier, NULL, P);
+	pthread_mutex_init(&mutex, NULL);
 
 	// alocam un vector de pointeri la structuri
 	auxStruct **aux = malloc(sizeof(auxStruct *) * P);
 
 	// create the threads
 	for (int i = 0; i < P; i++) {
-		aux[i] = init(&barrier, i, objects, object_count, generations_count, sack_capacity, P);
+		aux[i] = init(&barrier, &mutex, i, objects, object_count, generations_count, sack_capacity, P);
 	}
 
 	for (int i = 0; i < P; i++) {
@@ -460,6 +477,7 @@ int main(int argc, char *argv[])
 		pthread_join(tid[i], NULL);
 	}
 
+	pthread_mutex_destroy(&mutex);
 	pthread_barrier_destroy(&barrier);
 	// to here
 
