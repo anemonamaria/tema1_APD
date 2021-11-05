@@ -204,20 +204,26 @@ void run_genetic_algorithm(const sack_object *objects, int object_count, int gen
 	for (int k = 0; k < generations_count; ++k) {
 		cursor = 0;
 
+		// printf("\n\n");
+		// for(int i = 0 ; i < object_count; i++) {
+		// 	printf("%d %d \n",i, current_generation[i].fitness);
+		// }
+		// printf("\n\n");
 		// compute fitness and sort by it
 		compute_fitness_function(objects, current_generation, object_count, sack_capacity);
 // printf("\n");
-// 	for (int i = 0; i < object_count; ++i) {
-// 		printf("%d %d\n", i, current_generation[i].fitness);
-// 	}
-// 	printf("\n");
-		qsort(current_generation, object_count, sizeof(individual), cmpfunc);
 
+		qsort(current_generation, object_count, sizeof(individual), cmpfunc);
+		for (int i = 0; i < object_count; ++i) {
+			printf("%d %d\n", i, current_generation[i].fitness);
+		}
+		printf("\n");
 		// keep first 30% children (elite children selection)
 		count = object_count * 3 / 10;
 		for (int i = 0; i < count; ++i) {
 			copy_individual(current_generation + i, next_generation + i);
 		}
+
 		cursor = count;
 
 		// mutate first 20% children with the first version of bit string mutation

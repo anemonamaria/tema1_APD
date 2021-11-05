@@ -7,11 +7,17 @@
 #include "pthread_barrier_mac.h"
 
 
+// TODO - de facut output-ul bun
+//  - de paralelizat qsort
+
 //mine from here
 #define MIN(A, B) (((A) < (B)) ? (A) : (B))
+#define MAX(A, B) (((A) < (B)) ? (B) : (A))
+
 
 typedef struct auxStruct {
 	pthread_barrier_t *barrier;
+	pthread_mutex_t *mutex;
 	int thread_id;
 	sack_object *objects;
 	int object_count;
@@ -22,7 +28,7 @@ typedef struct auxStruct {
 
 // alocam memorie
 auxStruct *init(pthread_barrier_t *barrier, int thread_id, sack_object *objects,
-				int object_count, int generations_count, int sack_capacity, int P) {
+				int object_count, int generations_count, int sack_capacity, int P, pthread_mutex_t *mutex) {
 	auxStruct *myStruct;
 	myStruct = malloc(sizeof(auxStruct));
 
@@ -33,6 +39,7 @@ auxStruct *init(pthread_barrier_t *barrier, int thread_id, sack_object *objects,
 	myStruct->generations_count = generations_count;
 	myStruct->sack_capacity = sack_capacity;
 	myStruct->P = P;
+	myStruct->mutex = mutex;
 
 
 	return myStruct;
@@ -114,19 +121,18 @@ void print_best_fitness(const individual *generation)
 	printf("%d\n", generation[0].fitness);
 }
 
-void compute_fitness_function(auxStruct *myStruct, individual *generation)//(const sack_object *objects, individual *generation);//, int object_count, int sack_capacity)//, int T, int P)
+void compute_fitness_function(auxStruct *myStruct, individual *generation)
 {
 	int weight;
 	int profit;
 
-	//pthread_barrier_wait(myStruct->barrier);
 	int start = myStruct->object_count * myStruct->thread_id / myStruct->P;
 	int end = MIN(myStruct->object_count, myStruct->object_count * (myStruct->thread_id + 1) / myStruct->P);
+	//pthread_barrier_wait(myStruct->barrier);
 	for (int i = start; i < end; ++i) {
 		weight = 0;
 		profit = 0;
-		// int start = generation[i].chromosome_length * myStruct->thread_id / myStruct->P;
-		// int end = MIN(generation[i].chromosome_length, generation[i].chromosome_length * (myStruct->thread_id + 1) /myStruct->P);
+
 		for (int j = 0; j < generation[i].chromosome_length; ++j) {
 			if (generation[i].chromosomes[j]) {
 				weight += myStruct->objects[j].weight;
@@ -222,6 +228,17 @@ void free_generation(individual *generation)
 	}
 }
 
+int *intersection(int a1, int b1, int a2, int b2) {
+	int *rez = malloc(sizeof(int) * 2);
+	if(a2 < b1) {
+		rez[0] = MAX(a1, a2);
+		rez[1] = MIN(b1, b2);
+	}
+
+	return rez;
+
+}
+
 void *thread_func2(void *arg) {
 
 	auxStruct *workStruct = (auxStruct *)arg;
@@ -232,6 +249,7 @@ void *thread_func2(void *arg) {
 	individual *tmp = NULL;
 
 	// set initial generation (composed of object_count individuals with a single item in the sack)
+
 	for (int i = 0; i < workStruct->object_count; ++i) {
 		current_generation[i].fitness = 0;
 		current_generation[i].chromosomes = (int*) calloc(workStruct->object_count, sizeof(int));
@@ -244,35 +262,42 @@ void *thread_func2(void *arg) {
 		next_generation[i].index = i;
 		next_generation[i].chromosome_length = workStruct->object_count;
 	}
+	//pthread_barrier_wait(workStruct->barrier);
 
 	// iterate for each generation
+
+	int start =  workStruct->generations_count * workStruct->thread_id / workStruct->P;
+	int end = min (workStruct->generations_count,  workStruct->generations_count * (workStruct->thread_id + 1) / workStruct->P);
 	for (int k = 0; k < workStruct->generations_count; ++k) {
 		cursor = 0;
 
-		pthread_barrier_wait(workStruct->barrier);
+	//	if(workStruct->thread_id == 0) {
 
-		if(workStruct->thread_id == 0){// compute fitness and sort by it
-			compute_fitness_function(workStruct, current_generation);//, workStruct->thread_id, workStruct->P);
-			qsort(current_generation, workStruct->object_count, sizeof(individual), cmpfunc);
-		}
-		// keep first 30% children (elite children selection)
+		compute_fitness_function(workStruct, current_generation);
+
+		// 	for(int j = 0; j < workStruct->object_count; j++) {
+		// 	printf("%d  j  %d fit  %d thre %d gen\n",j, current_generation[j].fitness, workStruct->thread_id, k);
+		// }
+		// printf("asd\n");
+
+
+		qsort(current_generation, workStruct->object_count, sizeof(individual), cmpfunc);
+
+
 		count = workStruct->object_count * 3 / 10;
 		int start1 = count * workStruct->thread_id / workStruct->P;
 		int end1 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->P);
 
-		//printf("%d start1 %d end1 %d thread\n" , start1, end1, workStruct->thread_id);
 		for (int i = start1; i < end1; ++i) {
 			copy_individual(current_generation + i, next_generation + i);
 		}
 		pthread_barrier_wait(workStruct->barrier);
+
 		cursor = count;
 
-
-		// mutate first 20% children with the first version of bit string mutation
 		count = workStruct->object_count * 2 / 10;
 		int start2 = count * workStruct->thread_id / workStruct->P;
 		int end2 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->P);
-		//printf("%d start2 %d end2 %d thread\n", start2, end2, workStruct->thread_id);
 
 		for (int i = start2; i < end2; ++i) {
 			copy_individual(current_generation + i, next_generation + cursor + i);
@@ -282,11 +307,9 @@ void *thread_func2(void *arg) {
 
 		cursor += count;
 
-		// mutate next 20% children with the second version of bit string mutation
 		count = workStruct->object_count * 2 / 10;
 		int start3 = count * workStruct->thread_id / workStruct->P;
 		int end3 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->P);
-		//printf("%d start3 %d end3 %d thread\n", start3, end3, workStruct->thread_id);
 
 		for (int i = start3; i < end3; ++i) {
 			copy_individual(current_generation + i + count, next_generation + cursor + i);
@@ -295,8 +318,6 @@ void *thread_func2(void *arg) {
 		pthread_barrier_wait(workStruct->barrier);
 		cursor += count;
 
-		// crossover first 30% parents with one-point crossover
-		// (if there is an odd number of parents, the last one is kept as such)
 		count = workStruct->object_count * 3 / 10;
 
 		if (count % 2 == 1) {
@@ -306,30 +327,26 @@ void *thread_func2(void *arg) {
 
 		int start4 = count * workStruct->thread_id / workStruct->P;
 		int end4 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->P);
-		//printf("%d start4 %d end4 %d thread\n", start4, end4, workStruct->thread_id);
 
 		for (int i = start4; i < end4; i += 2) {
 			crossover(current_generation + i, next_generation + cursor + i, k);
 		}
 		pthread_barrier_wait(workStruct->barrier);
 
-		// switch to new generation
+
 		tmp = current_generation;
 		current_generation = next_generation;
 		next_generation = tmp;
 
 		int start5 = workStruct->object_count * workStruct->thread_id / workStruct->P;
 		int end5 = MIN(workStruct->object_count, (workStruct->thread_id + 1) * workStruct->object_count / workStruct->P);
-		//printf("%d start5s %d end5 %d thread\n", start5, end5, workStruct->thread_id);
 
 		for (int i = start5; i < end5; ++i) {
 			current_generation[i].index = i;
 		}
 
-		pthread_barrier_wait(workStruct->barrier);
-
 		if (k % 5 == 0 && workStruct->thread_id == 0) {
-			print_best_fitness(current_generation);
+			//print_best_fitness(current_generation);
 		}
 	}
 
@@ -381,17 +398,17 @@ int main(int argc, char *argv[])
 	// mine from here
 	pthread_t tid[P];
 	pthread_barrier_t barrier;
-	//pthread_mutex_t mutex;
+	pthread_mutex_t mutex;
 
 	pthread_barrier_init(&barrier, NULL, P);
-	//pthread_mutex_init(&mutex, NULL);
+	pthread_mutex_init(&mutex, NULL);
 
 	// alocam un vector de pointeri la structuri
 	auxStruct **aux = malloc(sizeof(auxStruct *) * P);
 
 	// create the threads
 	for (int i = 0; i < P; i++) {
-		aux[i] = init(&barrier, i, objects, object_count, generations_count, sack_capacity, P);
+		aux[i] = init(&barrier, i, objects, object_count, generations_count, sack_capacity, P, &mutex);
 	}
 
 	for (int i = 0; i < P; i++) {
@@ -402,7 +419,7 @@ int main(int argc, char *argv[])
 		pthread_join(tid[i], NULL);
 	}
 
-	//pthread_mutex_destroy(&mutex);
+	pthread_mutex_destroy(&mutex);
 	pthread_barrier_destroy(&barrier);
 	// to here
 
