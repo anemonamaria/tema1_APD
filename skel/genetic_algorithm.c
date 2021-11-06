@@ -204,21 +204,16 @@ void run_genetic_algorithm(const sack_object *objects, int object_count, int gen
 	for (int k = 0; k < generations_count; ++k) {
 		cursor = 0;
 
-		// printf("\n\n");
-		// for(int i = 0 ; i < object_count; i++) {
-		// 	printf("%d %d \n",i, current_generation[i].fitness);
-		// }
-		// printf("\n\n");
 		// compute fitness and sort by it
 		compute_fitness_function(objects, current_generation, object_count, sack_capacity);
-// printf("\n");
-
+// for (int i = 0; i < object_count; ++i) {
+// 			printf("%d %d\n", i, current_generation[i].fitness);
+// 		}
+// 		printf("\n");
 		qsort(current_generation, object_count, sizeof(individual), cmpfunc);
-		for (int i = 0; i < object_count; ++i) {
-			printf("%d %d\n", i, current_generation[i].fitness);
-		}
-		printf("\n");
+
 		// keep first 30% children (elite children selection)
+
 		count = object_count * 3 / 10;
 		for (int i = 0; i < count; ++i) {
 			copy_individual(current_generation + i, next_generation + i);
@@ -228,6 +223,7 @@ void run_genetic_algorithm(const sack_object *objects, int object_count, int gen
 
 		// mutate first 20% children with the first version of bit string mutation
 		count = object_count * 2 / 10;
+
 		for (int i = 0; i < count; ++i) {
 			copy_individual(current_generation + i, next_generation + cursor + i);
 			mutate_bit_string_1(next_generation + cursor + i, k);
@@ -236,11 +232,13 @@ void run_genetic_algorithm(const sack_object *objects, int object_count, int gen
 
 		// mutate next 20% children with the second version of bit string mutation
 		count = object_count * 2 / 10;
+
 		for (int i = 0; i < count; ++i) {
 			copy_individual(current_generation + i + count, next_generation + cursor + i);
 			mutate_bit_string_2(next_generation + cursor + i, k);
 		}
 		cursor += count;
+
 
 		// crossover first 30% parents with one-point crossover
 		// (if there is an odd number of parents, the last one is kept as such)
@@ -250,6 +248,7 @@ void run_genetic_algorithm(const sack_object *objects, int object_count, int gen
 			copy_individual(current_generation + object_count - 1, next_generation + cursor + count - 1);
 			count--;
 		}
+		// printf("%d\n", count);
 
 		for (int i = 0; i < count; i += 2) {
 			crossover(current_generation + i, next_generation + cursor + i, k);
@@ -267,6 +266,7 @@ void run_genetic_algorithm(const sack_object *objects, int object_count, int gen
 		if (k % 5 == 0) {
 			print_best_fitness(current_generation);
 		}
+
 	}
 
 	compute_fitness_function(objects, current_generation, object_count, sack_capacity);
