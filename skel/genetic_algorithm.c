@@ -253,7 +253,10 @@ void run_genetic_algorithm(const sack_object *objects, int object_count, int gen
 		for (int i = 0; i < count; i += 2) {
 			crossover(current_generation + i, next_generation + cursor + i, k);
 		}
-
+		// for (int i = 0; i < object_count; ++i) {
+		// 	printf("%d %d\n", i, current_generation[i].fitness);
+		// }
+		// printf("\n");
 		// switch to new generation
 		tmp = current_generation;
 		current_generation = next_generation;

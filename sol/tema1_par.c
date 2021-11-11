@@ -132,15 +132,15 @@ void print_best_fitness(const individual *generation)
 	printf("%d\n", generation[0].fitness);
 }
 
-void compute_fitness_function(mainStruct *myStruct, individual *generation, int start, int end)
+void compute_fitness_function(mainStruct *myStruct, individual *generation)//, int start, int end)
 {
 	int weight;
 	int profit;
 
 	// int start = myStruct->global->object_count * myStruct->thread_id / myStruct->global->P;
 	// int end = MIN(myStruct->global->object_count, myStruct->global->object_count * (myStruct->thread_id + 1) / myStruct->global->P);
-	//pthread_barrier_wait(myStruct->barrier);
-	for (int i = start; i < end; ++i) {
+	//pthread_barrier_wait(myStruct->barrier);    i < end; myStruct->global->object_count;
+	for (int i = 0; i < myStruct->global->object_count; ++i) {
 		weight = 0;
 		profit = 0;
 
@@ -277,12 +277,12 @@ void *thread_func2(void *arg) {
 	}
 	// iterate for each generation
 
-	int start_c1 = workStruct->global->object_count * workStruct->thread_id / workStruct->global->P;
-	int end_c1 = MIN(workStruct->global->object_count, workStruct->global->object_count * (workStruct->thread_id + 1) / workStruct->global->P);
+	// int start_c1 = workStruct->global->object_count * workStruct->thread_id / workStruct->global->P;
+	// int end_c1 = MIN(workStruct->global->object_count, workStruct->global->object_count * (workStruct->thread_id + 1) / workStruct->global->P);
 
-	count = workStruct->global->object_count * 3 / 10;
-	int start1 = count * workStruct->thread_id / workStruct->global->P;
-	int end1 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->global->P);
+	// count = workStruct->global->object_count * 3 / 10;
+	// int start1 = count * workStruct->thread_id / workStruct->global->P;
+	// int end1 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->global->P);
 
 	count = workStruct->global->object_count * 2 / 10;
 	int start2 = count * workStruct->thread_id / workStruct->global->P;
@@ -298,48 +298,37 @@ void *thread_func2(void *arg) {
 	for (int k = 0; k < workStruct->global->generations_count; ++k) {
 		cursor = 0;
 
-		compute_fitness_function(workStruct, current_generation, start_c1, end_c1);
-
+		compute_fitness_function(workStruct, current_generation);//, start_c1, end_c1);
 
 		// for(int j = 0; j < workStruct->global->object_count; j++) {
 		// 	printf("%d  j  %d fit  %d thre %d gen\n",j, current_generation[j].fitness, workStruct->thread_id, k);
 		// }
-		// printf("asd\n");
-		pthread_barrier_wait(workStruct->global->barrier);
+		// printf("\n\n");
+
 		if(workStruct->thread_id == 0) {
 			qsort(current_generation, workStruct->global->object_count, sizeof(individual), cmpfunc);
+
 		}
-		pthread_barrier_wait(workStruct->global->barrier);
+
 
 		count = workStruct->global->object_count * 3 / 10;
-		// int start1 = count * workStruct->thread_id / workStruct->global->P;
-		// int end1 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->global->P);
-		//  intersc = intersection(start1, end1, count, count + cursor);
-		for (int i = start1; i < end1; ++i) {
+		// TODO asta paralelizat nu intra in timp pentru ./in1 10 dar celelalte dau corect
+		for (int i = 0; i < count; ++i) {
 			copy_individual(current_generation + i, next_generation + i);
 		}
 		pthread_barrier_wait(workStruct->global->barrier);
-		// free(intersc);
 
 		cursor = count;
 
 		count = workStruct->global->object_count * 2 / 10;
-		// int start2 = count * workStruct->thread_id / workStruct->global->P;
-		// int end2 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->global->P);
-		// intersc = intersection(start2, end2, count, count+cursor);
 		for (int i = start2; i < end2; ++i) {
 			copy_individual(current_generation + i, next_generation + cursor + i);
 			mutate_bit_string_1(next_generation + cursor + i, k);
 		}
 		pthread_barrier_wait(workStruct->global->barrier);
-		// free(intersc);
 
 		cursor += count;
-
 		count = workStruct->global->object_count * 2 / 10;
-		// int start3 = count * workStruct->thread_id / workStruct->global->P;
-		// int end3 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->global->P);
-		//intersc = intersection(start3, end3, count, count + cursor);
 		for (int i = start3; i < end3; ++i) {
 			copy_individual(current_generation + i + count, next_generation + cursor + i);
 			mutate_bit_string_2(next_generation + cursor + i, k);
@@ -351,27 +340,18 @@ void *thread_func2(void *arg) {
 		if (count % 2 == 1) {
 			copy_individual(current_generation + workStruct->global->object_count - 1, next_generation + cursor + count - 1);
 			count--;
-			// pthread_barrier_wait(workStruct->global->barrier);
-
 		}
 
-		int start4_new = count * workStruct->thread_id / workStruct->global->P;
-		int end4_new = MIN(count, count * (workStruct->thread_id + 1) / workStruct->global->P);
-		// intersc = intersection(start4_new, end4_new, count, count + cursor);
-
-		for (int i = start4_new; i < end4_new; i += 2) {
+		for (int i = 0; i < count; i += 2) {
 			crossover(current_generation + i, next_generation + cursor + i, k);
 		}
 		pthread_barrier_wait(workStruct->global->barrier);
-		// free(intersc);
 
 		tmp = current_generation;
 		current_generation = next_generation;
 		next_generation = tmp;
+		pthread_barrier_wait(workStruct->global->barrier);
 
-		// int start5 = workStruct->global->object_count * workStruct->thread_id / workStruct->global->P;
-		// int end5 = MIN(workStruct->global->object_count, (workStruct->thread_id + 1) * workStruct->global->object_count / workStruct->global->P);
-		// intersc = intersection(start5, end5, count, count + cursor);
 		for (int i = start5; i < end5; ++i) {
 			current_generation[i].index = i;
 		}
@@ -380,18 +360,18 @@ void *thread_func2(void *arg) {
 			print_best_fitness(current_generation);
 		}
 		pthread_barrier_wait(workStruct->global->barrier);
-		// free(intersc);
 
 	}
 
-		compute_fitness_function(workStruct, current_generation, start_c1, end_c1);
-		pthread_barrier_wait(workStruct->global->barrier);
+	pthread_barrier_wait(workStruct->global->barrier);
+
+	// TODO aici rezolva compute !!!
+	compute_fitness_function(workStruct, current_generation);//, start_c1, end_c1);
+	pthread_barrier_wait(workStruct->global->barrier);
+	if(workStruct->thread_id == 0) {
 		qsort(current_generation, workStruct->global->object_count, sizeof(individual), cmpfunc);
-		// printf("\n\n");
-		// for(int i = 0 ; i < workStruct->object_count; i++) {
-		// 	printf("%d %d %d\n",i, current_generation[i].fitness, workStruct->thread_id);
-		// }
-		// printf("\n\n");
+	}
+
 	if(workStruct->thread_id == 0) {
 		print_best_fitness(current_generation);
 	}
