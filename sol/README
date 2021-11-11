@@ -1,1 +1,13 @@
-alallalalal
+Moraru Anemona Maria
+333CC
+
+Algoritmi paraleli si distribuiti
+
+Noiembrie 2021
+
+Tema #1 Paralelizarea unui algoritm genetic
+
+Am creat doua structuri in care retin pentru fiecare thread toate informatiile
+necesare pe parcurs. Functia run_genetic_algorithm() din /skel este paralelizata
+in functia *thread_func2() careia ii pasez ca argument structura ce detine toate
+variabilele de care avem nevoie.
