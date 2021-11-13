@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <math.h>
+#include <limits.h>
 #include <string.h>
 #include "objects.h"
 #include "pthread_barrier_mac.h"
@@ -49,6 +50,9 @@ mainStruct *init(pthread_barrier_t *barrier, int thread_id, sack_object *objects
 
 	return myStruct;
 }
+
+void copy_individual(const individual *from, const individual *to);
+void free_generation(individual *generation);
 
 int read_input(sack_object **objects, int *object_count, int *sack_capacity, int *generations_count, int *P, int argc, char *argv[])
 {
@@ -214,10 +218,12 @@ void compare_func_par(individual *current_generation, mainStruct *workStruct)
 	int width, i;
 	individual *aux;
 
-	for (width = 1; width < workStruct->global->object_count; width = 2 * width) {
+	for (width = 1; width < workStruct->global->object_count; width <<= 1) {
 
-		int start = thread_id *  (workStruct->global->object_count / (2 * width)) / workStruct->global->P * 2 * width;
-		int end = (thread_id + 1) * (workStruct->global->object_count / (2 * width)) / workStruct->global->P * 2 * width;
+		int start = thread_id *  (workStruct->global->object_count / (2 * width))
+						/ workStruct->global->P * 2 * width;
+		int end = (thread_id + 1) * (workStruct->global->object_count / (2 * width))
+						 / workStruct->global->P * 2 * width;
 
 		for (i = start; i < end; i = i + 2 * width) {
 			merge(current_generation, i, i + width, i + 2 * width, workStruct->dest);
@@ -232,8 +238,114 @@ void compare_func_par(individual *current_generation, mainStruct *workStruct)
 
 		pthread_barrier_wait(workStruct->global->barrier);
 	}
-//	free(aux);
 }
+/*
+// net
+void merge2(individual *current_generation, int left, int middle, int right) {
+	int i = 0, j = 0,  k = 0;
+	int left_length = middle - left + 1;
+	int right_length = right - middle;
+	individual *left_indiv = calloc(left_length, sizeof(individual));
+	individual *right_indiv = calloc(right_length, sizeof(individual));
+
+	for (i = 0; i < left_length; i++) {
+		copy_individual(&current_generation[left+i], &left_indiv[i]);
+		left_indiv[i].chromosome_length = current_generation[left + i].chromosome_length;
+		left_indiv[i].fitness = current_generation[left + i].fitness;
+		left_indiv[i].index = current_generation[left + i].index;
+	}
+
+	for (i = 0; i < right_length; i++) {
+		copy_individual(&current_generation[middle + 1 + i], &right_indiv[i]);
+		right_indiv[i].chromosome_length = current_generation[middle + i].chromosome_length;
+		right_indiv[i].fitness = current_generation[middle + i].fitness;
+		right_indiv[i].index = current_generation[middle + i].index;
+	}
+
+	i = 0;
+	while(i < left_length && j < right_length) {
+		if (cmpfunc2(&left_indiv[i], &right_indiv[j]) < 0) {
+			copy_individual(&left_indiv[i], &current_generation[left + k]);
+			current_generation[left + k].chromosome_length = left_indiv[i].chromosome_length;
+			current_generation[left + k].fitness = 			 left_indiv[i].fitness;
+			current_generation[left + k].index = 	         left_indiv[i].index;
+			i++;
+		} else {
+			copy_individual(&right_indiv[j], &current_generation[left_length + k]);
+			current_generation[left + k].chromosome_length = right_indiv[j].chromosome_length;
+			current_generation[left + k].fitness = 			 right_indiv[j].fitness;
+			current_generation[left + k].index = 	         right_indiv[j].index;
+			j++;
+		}
+		k++;
+	}
+
+	while(i < left_length) {
+		copy_individual(&left_indiv[i], &current_generation[left + k]);
+		current_generation[left + k].chromosome_length = left_indiv[i].chromosome_length;
+		current_generation[left + k].fitness = 			 left_indiv[i].fitness;
+		current_generation[left + k].index = 	         left_indiv[i].index;
+		k++; i++;
+	}
+	while(j < right_length) {
+		copy_individual(&right_indiv[i], &current_generation[left + k]);
+		current_generation[left + k].chromosome_length = right_indiv[j].chromosome_length;
+		current_generation[left + k].fitness = 			 right_indiv[j].fitness;
+		current_generation[left + k].index = 	         right_indiv[j].index;
+		k++; j++;
+	}
+
+	free_generation(left_indiv);
+	free_generation(right_indiv);
+	free(left_indiv);
+	free(right_indiv);
+}
+
+void merge_sort(individual *current_generation, int left, int right) {
+	if (left < right) {
+		int middle = left + (right - left) / 2;
+		merge_sort(current_generation, left, middle);
+		merge_sort(current_generation, middle + 1, right);
+		merge2(current_generation, left, middle, right);
+	}
+}
+
+void merge_sections_array(individual *current_generation, mainStruct *workStruct, int number, int agg) {
+	for (int i = 0; i < number; i += 2) {
+		int left = i * workStruct->global->object_count / workStruct->global->P * agg;
+		int right = ((i + 2) * workStruct->global->object_count / workStruct->global->P * agg) - 1;
+		int middle = left + (workStruct->global->object_count / workStruct->global->P * agg) - 1;
+		if(right >= workStruct->global->object_count) {
+			right = workStruct->global->object_count - 1;
+		}
+
+		merge2(current_generation, left, middle, right);
+	}
+
+	if(number / 2 >= 1) {
+		merge_sections_array(current_generation, workStruct, number / 2, agg / 2);
+	}
+}
+
+void thread_merge(individual *current_generation, mainStruct *workStruct) {
+	int thread_id = workStruct->thread_id;
+	int left = thread_id * workStruct->global->object_count /  workStruct->global->P;
+	int right = (thread_id + 1) * workStruct->global->object_count /  workStruct->global->P - 1;
+
+	if(thread_id == workStruct->global->object_count - 1) {
+		right += workStruct->global->object_count % workStruct->global->P;
+	}
+	int middle = left + (right - left) / 2;
+	if (left < right) {
+		merge_sort(current_generation, left, right);
+		merge_sort(current_generation, left+1, right);
+		merge2(current_generation, left, middle, right);
+	}
+
+	if(thread_id == 0) {
+		merge_sections_array(current_generation, workStruct, workStruct->global->P, 1);
+	}
+}*/
 
 void mutate_bit_string_1(const individual *ind, int generation_index)
 {
@@ -345,7 +457,8 @@ void *thread_func2(void *arg) {
 	int end3 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->global->P);
 
 	int start5 = workStruct->global->object_count * workStruct->thread_id / workStruct->global->P;
-	int end5 = MIN(workStruct->global->object_count, (workStruct->thread_id + 1) * workStruct->global->object_count / workStruct->global->P);
+	int end5 = MIN(workStruct->global->object_count, (workStruct->thread_id + 1) *
+					 workStruct->global->object_count / workStruct->global->P);
 
 	for (int k = 0; k < workStruct->global->generations_count; ++k) {
 		cursor = 0;
@@ -357,12 +470,13 @@ void *thread_func2(void *arg) {
 		//if(workStruct->thread_id == 0) {
 		//	qsort(current_generation, workStruct->global->object_count, sizeof(individual), cmpfunc);
 			compare_func_par(current_generation, workStruct);
+			// thread_merge(current_generation, workStruct);
 		//}
 
-		for(int j = 0; j < workStruct->global->object_count; j++) {
-			printf("%d  j  %d fit  %d thre %d gen\n",j, current_generation[j].fitness, workStruct->thread_id, k);
-		}
-		printf("\n\n");
+		// for(int j = 0; j < workStruct->global->object_count; j++) {
+		// 	printf("%d  j  %d fit  %d thre %d gen\n",j, current_generation[j].fitness, workStruct->thread_id, k);
+		// }
+		// printf("\n\n");
 
 		pthread_barrier_wait(workStruct->global->barrier);
 
