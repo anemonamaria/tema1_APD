@@ -194,6 +194,44 @@ int cmpfunc2(individual *a, individual *b)
 	return res;
 }
 
+
+void interclasare(individual* v, individual* v_aux, int start, int mid, int end) {
+	int p1 = start;
+	int p2 = mid;
+	int cur_ind = start;
+	while (p1 < mid && p2 < end) {
+		if (cmpfunc2(&v[p1], &v[p2]) > 0) {
+			v_aux[cur_ind++] = v[p2++];
+		} else {
+			v_aux[cur_ind++] = v[p1++];
+		}
+	}
+	while (p1 < mid) {
+		v_aux[cur_ind++] = v[p1++];
+        }
+	while (p2 < end) {
+                v_aux[cur_ind++] = v[p2++];
+        }
+	for (int i = start; i < end; ++i) {
+		v[i] = v_aux[i];
+	}
+}
+
+void merge(mainStruct *workStruct, individual *current_generation) {
+	int thread_id = workStruct->thread_id;
+	for (int w = 1; w < workStruct->global->object_count; w *= 2) {
+		for (int start = 2 * w * thread_id; start + w < workStruct->global->object_count; start += 2 * w * workStruct->global->P) {
+			int mid = start + w;
+			int end = start + 2 * w;
+			if (end > workStruct->global->object_count) {
+				end = workStruct->global->object_count;
+			}
+			interclasare(current_generation, workStruct->dest, start, mid, end);
+		}
+		pthread_barrier_wait (workStruct->global->barrier);
+	}
+}
+/*
 void merge(individual *source, int start, int mid, int end, individual *destination) {
 	int iA = start;
 	int iB = mid;
@@ -210,6 +248,14 @@ void merge(individual *source, int start, int mid, int end, individual *destinat
 	}
 }
 
+void merge_sort(individual *source, int low, int high, individual *destination) {
+	int mid = (low + high) / 2;
+	if(low < high) {
+		merge_sort(source, low, mid,  destination);
+		merge_sort(source, mid + 1, high,  destination);
+		merge(source, low, mid, high, destination);
+	}
+}
 
 //TODO repara functia asta sa fie pentru toate numerele, nu numai nr ^2
 void compare_func_par(individual *current_generation, mainStruct *workStruct)
@@ -218,15 +264,20 @@ void compare_func_par(individual *current_generation, mainStruct *workStruct)
 	int width, i;
 	individual *aux;
 
-	for (width = 1; width < workStruct->global->object_count; width <<= 1) {
+	for (width = 1; width < workStruct->global->object_count; width = width + 1) {
 
-		int start = thread_id *  (workStruct->global->object_count / (2 * width))
-						/ workStruct->global->P * 2 * width;
-		int end = (thread_id + 1) * (workStruct->global->object_count / (2 * width))
-						 / workStruct->global->P * 2 * width;
+		int start = thread_id *  (workStruct->global->object_count / (1 + width))
+						/ workStruct->global->P * (1 + width);
+		int end = (thread_id + 1) * (workStruct->global->object_count / (1 + width))
+						 / workStruct->global->P *(1 + width);
 
-		for (i = start; i < end; i = i + 2 * width) {
-			merge(current_generation, i, i + width, i + 2 * width, workStruct->dest);
+		for (i = start; i < end; i = i + 1 + width) {
+      		int right = i + 1 + width;
+      		if(right > end) right = end;
+      		int mid = i + width / 2;
+      		if(mid > end) mid = end;
+			merge_sort(current_generation, i, i + 1 + width, workStruct->dest);
+			// merge(current_generation, i, mid, i + 1 + width, workStruct->dest);
 		}
 
 		pthread_barrier_wait(workStruct->global->barrier);
@@ -237,116 +288,166 @@ void compare_func_par(individual *current_generation, mainStruct *workStruct)
 		}
 
 		pthread_barrier_wait(workStruct->global->barrier);
-	}
-}
+	}*/
+//////////////////////////////////////////
 /*
-// net
-void merge2(individual *current_generation, int left, int middle, int right) {
-	int i = 0, j = 0,  k = 0;
-	int left_length = middle - left + 1;
-	int right_length = right - middle;
-	individual *left_indiv = calloc(left_length, sizeof(individual));
-	individual *right_indiv = calloc(right_length, sizeof(individual));
+	// int left = thread_id * workStruct->global->object_count /  workStruct->global->P;
+	// int right = (thread_id + 1) * workStruct->global->object_count /  workStruct->global->P - 1;
 
-	for (i = 0; i < left_length; i++) {
-		copy_individual(&current_generation[left+i], &left_indiv[i]);
-		left_indiv[i].chromosome_length = current_generation[left + i].chromosome_length;
-		left_indiv[i].fitness = current_generation[left + i].fitness;
-		left_indiv[i].index = current_generation[left + i].index;
-	}
+	// if(thread_id == workStruct->global->P - 1) {
+	// 	right += workStruct->global->object_count % workStruct->global->P;
+	// }
 
-	for (i = 0; i < right_length; i++) {
-		copy_individual(&current_generation[middle + 1 + i], &right_indiv[i]);
-		right_indiv[i].chromosome_length = current_generation[middle + i].chromosome_length;
-		right_indiv[i].fitness = current_generation[middle + i].fitness;
-		right_indiv[i].index = current_generation[middle + i].index;
-	}
+	// int middle = left + (right - left) / 2;
+	// if(left < right) {
+	// 	merge_sort(left, right, current_generation, workStruct->dest);
+	// 	merge_sort(left+1, right, current_generation, workStruct->dest);
+	// 	merge(current_generation, left, middle, right, workStruct->dest);
+	// }
 
-	i = 0;
-	while(i < left_length && j < right_length) {
-		if (cmpfunc2(&left_indiv[i], &right_indiv[j]) < 0) {
-			copy_individual(&left_indiv[i], &current_generation[left + k]);
-			current_generation[left + k].chromosome_length = left_indiv[i].chromosome_length;
-			current_generation[left + k].fitness = 			 left_indiv[i].fitness;
-			current_generation[left + k].index = 	         left_indiv[i].index;
-			i++;
-		} else {
-			copy_individual(&right_indiv[j], &current_generation[left_length + k]);
-			current_generation[left + k].chromosome_length = right_indiv[j].chromosome_length;
-			current_generation[left + k].fitness = 			 right_indiv[j].fitness;
-			current_generation[left + k].index = 	         right_indiv[j].index;
-			j++;
-		}
-		k++;
-	}
+	// 	pthread_barrier_wait(workStruct->global->barrier);
+	// 	if (thread_id == 0) {
+	// 		aux = current_generation;
+	// 		current_generation = workStruct->dest;
+	// 		workStruct->dest = aux;
+	// 	}
 
-	while(i < left_length) {
-		copy_individual(&left_indiv[i], &current_generation[left + k]);
-		current_generation[left + k].chromosome_length = left_indiv[i].chromosome_length;
-		current_generation[left + k].fitness = 			 left_indiv[i].fitness;
-		current_generation[left + k].index = 	         left_indiv[i].index;
-		k++; i++;
-	}
-	while(j < right_length) {
-		copy_individual(&right_indiv[i], &current_generation[left + k]);
-		current_generation[left + k].chromosome_length = right_indiv[j].chromosome_length;
-		current_generation[left + k].fitness = 			 right_indiv[j].fitness;
-		current_generation[left + k].index = 	         right_indiv[j].index;
-		k++; j++;
-	}
+	// 	pthread_barrier_wait(workStruct->global->barrier);
+//////////////////////////////////////////
+	// int low = thread_id * workStruct->global->object_count / workStruct->global->P;
+	// int high = MIN(workStruct->global->object_count,(thread_id + 1) * workStruct->global->object_count / workStruct->global->P);
 
-	free_generation(left_indiv);
-	free_generation(right_indiv);
-	free(left_indiv);
-	free(right_indiv);
-}
+	// int mid = low + (high - low) / 2;
+	// if (low < high) {
+	// 	merge_sort(low, mid, current_generation, workStruct->dest);
+	// 	merge_sort(mid + 1, high, current_generation, workStruct->dest);
+	// 	merge(current_generation, low, mid, high, workStruct->dest);
+	// }
 
-void merge_sort(individual *current_generation, int left, int right) {
-	if (left < right) {
-		int middle = left + (right - left) / 2;
-		merge_sort(current_generation, left, middle);
-		merge_sort(current_generation, middle + 1, right);
-		merge2(current_generation, left, middle, right);
-	}
-}
+	// 	pthread_barrier_wait(workStruct->global->barrier);
+	// 	if (thread_id == 0) {
+	// 		aux = current_generation;
+	// 		current_generation = workStruct->dest;
+	// 		workStruct->dest = aux;
+	// 	}
 
-void merge_sections_array(individual *current_generation, mainStruct *workStruct, int number, int agg) {
-	for (int i = 0; i < number; i += 2) {
-		int left = i * workStruct->global->object_count / workStruct->global->P * agg;
-		int right = ((i + 2) * workStruct->global->object_count / workStruct->global->P * agg) - 1;
-		int middle = left + (workStruct->global->object_count / workStruct->global->P * agg) - 1;
-		if(right >= workStruct->global->object_count) {
-			right = workStruct->global->object_count - 1;
-		}
+	// 	pthread_barrier_wait(workStruct->global->barrier);*/
+//}
+/*
+// // net
+// void merge2(individual *current_generation, int left, int middle, int right) {
+// 	int i = 0, j = 0,  k = 0;
+// 	int left_length = middle - left + 1;
+// 	int right_length = right - middle;
+// 	individual left_indiv[left_length];// = calloc(left_length, sizeof(individual));
+// 	individual right_indiv[right_length];// = calloc(right_length, sizeof(individual));
+// 	// left_indiv->chromosome_length = left_length;
+// 	// right_indiv->chromosome_length = right_indiv;
+// 	for (i = 0; i < left_length; i++) {
+// 		// copy_individual(&current_generation[left+i], &left_indiv[i]);
+// 		// left_indiv[i].chromosome_length = current_generation[left + i].chromosome_length;
+// 		// left_indiv[i].fitness = current_generation[left + i].fitness;
+// 		// left_indiv[i].index = current_generation[left + i].index;
+// 		left_indiv[i] = current_generation[left + i];
+// 	}
 
-		merge2(current_generation, left, middle, right);
-	}
+// 	for (i = 0; i < right_length; i++) {
+// 		// copy_individual(&current_generation[middle + 1 + i], &right_indiv[i]);
+// 		// right_indiv[i].chromosome_length = current_generation[middle + i].chromosome_length;
+// 		// right_indiv[i].fitness = current_generation[middle + i].fitness;
+// 		// right_indiv[i].index = current_generation[middle + i].index;
+// 		right_indiv[i] = current_generation[middle + 1 + i];
+// 	}
 
-	if(number / 2 >= 1) {
-		merge_sections_array(current_generation, workStruct, number / 2, agg / 2);
-	}
-}
+// 	i = 0;
+// 	while(i < left_length && j < right_length) {
+// 		if (cmpfunc2(&left_indiv[i], &right_indiv[j]) < 0) {
+// 			// copy_individual(&left_indiv[i], &current_generation[left + k]);
+// 			// current_generation[left + k].chromosome_length = left_indiv[i].chromosome_length;
+// 			// current_generation[left + k].fitness = 			 left_indiv[i].fitness;
+// 			// current_generation[left + k].index = 	         left_indiv[i].index;
+// 			current_generation[left + k] = left_indiv[i];
+// 			i++;
+// 		} else {
+// 			// copy_individual(&right_indiv[j], &current_generation[left_length + k]);
+// 			// current_generation[left + k].chromosome_length = right_indiv[j].chromosome_length;
+// 			// current_generation[left + k].fitness = 			 right_indiv[j].fitness;
+// 			// current_generation[left + k].index = 	         right_indiv[j].index;
+// 			current_generation[left + k] = right_indiv[j];
+// 			j++;
+// 		}
+// 		k++;
+// 	}
 
-void thread_merge(individual *current_generation, mainStruct *workStruct) {
-	int thread_id = workStruct->thread_id;
-	int left = thread_id * workStruct->global->object_count /  workStruct->global->P;
-	int right = (thread_id + 1) * workStruct->global->object_count /  workStruct->global->P - 1;
+// 	while(i < left_length) {
+// 		// copy_individual(&left_indiv[i], &current_generation[left + k]);
+// 		// current_generation[left + k].chromosome_length = left_indiv[i].chromosome_length;
+// 		// current_generation[left + k].fitness = 			 left_indiv[i].fitness;
+// 		// current_generation[left + k].index = 	         left_indiv[i].index;
+// 		current_generation[left +k] = left_indiv[i];
+// 		k++; i++;
+// 	}
+// 	while(j < right_length) {
+// 		// copy_individual(&right_indiv[i], &current_generation[left + k]);
+// 		// current_generation[left + k].chromosome_length = right_indiv[j].chromosome_length;
+// 		// current_generation[left + k].fitness = 			 right_indiv[j].fitness;
+// 		// current_generation[left + k].index = 	         right_indiv[j].index;
+// 		current_generation[left + k] = right_indiv[j];
+// 		k++; j++;
+// 	}
 
-	if(thread_id == workStruct->global->object_count - 1) {
-		right += workStruct->global->object_count % workStruct->global->P;
-	}
-	int middle = left + (right - left) / 2;
-	if (left < right) {
-		merge_sort(current_generation, left, right);
-		merge_sort(current_generation, left+1, right);
-		merge2(current_generation, left, middle, right);
-	}
+// 	// free_generation(left_indiv);
+// 	// free_generation(right_indiv);
+// 	// free(left_indiv);
+// 	// free(right_indiv);
+// }
 
-	if(thread_id == 0) {
-		merge_sections_array(current_generation, workStruct, workStruct->global->P, 1);
-	}
-}*/
+// void merge_sort2(individual *current_generation, int left, int right) {
+// 	if (left < right) {
+// 		int middle = left + (right - left) / 2;
+// 		merge_sort2(current_generation, left, middle);
+// 		merge_sort2(current_generation, middle + 1, right);
+// 		merge2(current_generation, left, middle, right);
+// 	}
+// }
 
+// void merge_sections_array(individual *current_generation, mainStruct *workStruct, int number, int agg) {
+// 	for (int i = 0; i < number; i += 2) {
+// 		int left = i * workStruct->global->object_count / workStruct->global->P * agg;
+// 		int right = ((i + 2) * workStruct->global->object_count / workStruct->global->P * agg) - 1;
+// 		int middle = left + (workStruct->global->object_count / workStruct->global->P * agg) - 1;
+// 		if(right >= workStruct->global->object_count) {
+// 			right = workStruct->global->object_count - 1;
+// 		}
+
+// 		merge2(current_generation, left, middle, right);
+// 	}
+
+// 	if(number / 2 >= 1) {
+// 		merge_sections_array(current_generation, workStruct, number / 2, agg * 2);
+// 	}
+// }
+
+// void thread_merge(individual *current_generation, mainStruct *workStruct) {
+// 	int thread_id = workStruct->thread_id;
+// 	int left = thread_id * workStruct->global->object_count /  workStruct->global->P;
+// 	int right = (thread_id + 1) * workStruct->global->object_count /  workStruct->global->P - 1;
+
+// 	if(thread_id == workStruct->global->object_count - 1) {
+// 		right += workStruct->global->object_count % workStruct->global->P;
+// 	}
+// 	int middle = left + (right - left) / 2;
+// 	if (left < right) {
+// 		merge_sort2(current_generation, left, right);
+// 		merge_sort2(current_generation, left+1, right);
+// 		merge2(current_generation, left, middle, right);
+// 	}
+
+// 	// if(thread_id == 0) {
+// 	// 	merge_sections_array(current_generation, workStruct, workStruct->global->P, 1);
+// 	// }
+// }
+*/
 void mutate_bit_string_1(const individual *ind, int generation_index)
 {
 	int i, mutation_size;
@@ -467,11 +568,12 @@ void *thread_func2(void *arg) {
 
 		pthread_barrier_wait(workStruct->global->barrier);
 
-		//if(workStruct->thread_id == 0) {
-		//	qsort(current_generation, workStruct->global->object_count, sizeof(individual), cmpfunc);
-			compare_func_par(current_generation, workStruct);
+		//  if(workStruct->thread_id == 0) {
+			// qsort(current_generation, workStruct->global->object_count, sizeof(individual), cmpfunc);
+			// compare_func_par(current_generation, workStruct);
 			// thread_merge(current_generation, workStruct);
-		//}
+			merge(workStruct, current_generation);
+		//  }
 
 		// for(int j = 0; j < workStruct->global->object_count; j++) {
 		// 	printf("%d  j  %d fit  %d thre %d gen\n",j, current_generation[j].fitness, workStruct->thread_id, k);
@@ -479,6 +581,10 @@ void *thread_func2(void *arg) {
 		// printf("\n\n");
 
 		pthread_barrier_wait(workStruct->global->barrier);
+
+		// pthread_mutex_lock(workStruct->global->mutex);
+		// merge_sections_array(current_generation, workStruct, workStruct->global->P, 1);
+		// pthread_mutex_unlock(workStruct->global->mutex);
 
 		count = workStruct->global->object_count * 3 / 10;
 		// TODO asta paralelizat nu intra in timp pentru ./in1 10 dar celelalte dau corect
@@ -540,23 +646,30 @@ void *thread_func2(void *arg) {
 	// if(workStruct->thread_id == 0) {
 	// 	qsort(current_generation, workStruct->global->object_count, sizeof(individual), cmpfunc);
 	// }
-	compare_func_par(current_generation, workStruct);
-
-	// for(int i = 0; i < workStruct->global->object_count; i++) {
+	// if(workStruct->thread_id == 0) {
+			merge(workStruct, current_generation);
+	// 		for(int i = 0; i < workStruct->global->object_count; i++) {
 	// 	printf("%d %d %d \n", current_generation[i].fitness, i, workStruct->thread_id);
 	// }
-	// printf("\n");
+	// printf("\n\n");
+	// }
+	pthread_barrier_wait(workStruct->global->barrier);
+
+
+
+	// compare_func_par(current_generation, workStruct);
+
 
 	if(workStruct->thread_id == 0) {
 		print_best_fitness(current_generation);
 	}
 
 	// free resources for old generation
-	free_generation(current_generation);
+	// free_generation(current_generation);
 	free_generation(next_generation);
 
 	// free resources
-	free(current_generation);
+	// free(current_generation);
 	free(next_generation);
 
 	pthread_exit(NULL);
