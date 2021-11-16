@@ -195,12 +195,20 @@ int cmpfunc2(individual *a, individual *b)
 }
 
 
-void interclasare(individual* v, individual* v_aux, int start, int mid, int end) {
+void interclasare(individual* v, individual* v_aux, int start, int mid, int end, int thid, mainStruct *workStruct) {
 	int p1 = start;
 	int p2 = mid;
 	int cur_ind = start;
+
+	for(int i = start; i <= end; i++) {
+		printf("%d ", v[i].fitness);
+	}
+	printf("\n\n");
+
+
 	while (p1 < mid && p2 < end) {
-		if (cmpfunc2(&v[p1], &v[p2]) > 0) {
+		if (cmpfunc2(&v[p1], &v[p2]) <= 0) {
+			printf("cu cine intri?   %d %d  thre %d\n\n", v[p1].fitness, v[p2].fitness, thid);
 			v_aux[cur_ind++] = v[p2++];
 		} else {
 			v_aux[cur_ind++] = v[p1++];
@@ -212,23 +220,40 @@ void interclasare(individual* v, individual* v_aux, int start, int mid, int end)
 	while (p2 < end) {
                 v_aux[cur_ind++] = v[p2++];
         }
+
 	for (int i = start; i < end; ++i) {
 		v[i] = v_aux[i];
 	}
+	// pthread_mutex_unlock(workStruct->global->mutex);
+
+	for(int i = start; i <= end; i++) {
+		printf("%d ", v[i].fitness);
+	}
+	printf("\n\n");
 }
 
 void merge(mainStruct *workStruct, individual *current_generation) {
 	int thread_id = workStruct->thread_id;
 	for (int w = 1; w < workStruct->global->object_count; w *= 2) {
-		for (int start = 2 * w * thread_id; start + w < workStruct->global->object_count; start += 2 * w * workStruct->global->P) {
+		for (int start = 2 * w * thread_id; start + w < workStruct->global->object_count;
+				 start += 2 * w * workStruct->global->P) {
 			int mid = start + w;
 			int end = start + 2 * w;
 			if (end > workStruct->global->object_count) {
 				end = workStruct->global->object_count;
 			}
-			interclasare(current_generation, workStruct->dest, start, mid, end);
+			// printf("interclasare %d start %d mid %d end %d\n\n", start, mid, end, thread_id);
+			// pthread_barrier_wait (workStruct->global->barrier);
+	// pthread_mutex_lock(workStruct->global->mutex);
+
+			interclasare(current_generation, workStruct->dest, start, mid, end, thread_id, workStruct);
+	// pthread_mutex_unlock(workStruct->global->mutex);
+			// for(int i = 0; i <= workStruct->global->object_count; i++) {
+			// 	printf("%d %d\n", current_generation[i].fitness, i);
+			// }
+			// printf("\n\n");
 		}
-		pthread_barrier_wait (workStruct->global->barrier);
+	//	pthread_barrier_wait (workStruct->global->barrier);
 	}
 }
 /*
@@ -568,17 +593,18 @@ void *thread_func2(void *arg) {
 
 		pthread_barrier_wait(workStruct->global->barrier);
 
-		//  if(workStruct->thread_id == 0) {
-			// qsort(current_generation, workStruct->global->object_count, sizeof(individual), cmpfunc);
+		 if(workStruct->thread_id == 0) {
+			qsort(current_generation, workStruct->global->object_count, sizeof(individual), cmpfunc);
 			// compare_func_par(current_generation, workStruct);
 			// thread_merge(current_generation, workStruct);
-			merge(workStruct, current_generation);
-		//  }
-
+		 }
 		// for(int j = 0; j < workStruct->global->object_count; j++) {
 		// 	printf("%d  j  %d fit  %d thre %d gen\n",j, current_generation[j].fitness, workStruct->thread_id, k);
 		// }
 		// printf("\n\n");
+			// merge(workStruct, current_generation);
+		//  }
+;
 
 		pthread_barrier_wait(workStruct->global->barrier);
 
@@ -647,12 +673,17 @@ void *thread_func2(void *arg) {
 	// 	qsort(current_generation, workStruct->global->object_count, sizeof(individual), cmpfunc);
 	// }
 	// if(workStruct->thread_id == 0) {
+	// 	for(int i = 0; i < workStruct->global->object_count; i++) {
+	// 	printf("%d %d %d \n", current_generation[i].fitness, i, workStruct->thread_id);
+	// }
+	// printf("\n\n");
+	//}
 			merge(workStruct, current_generation);
 	// 		for(int i = 0; i < workStruct->global->object_count; i++) {
 	// 	printf("%d %d %d \n", current_generation[i].fitness, i, workStruct->thread_id);
 	// }
 	// printf("\n\n");
-	// }
+	//}
 	pthread_barrier_wait(workStruct->global->barrier);
 
 
