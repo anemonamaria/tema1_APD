@@ -7,7 +7,38 @@ Noiembrie 2021
 
 Tema #1 Paralelizarea unui algoritm genetic
 
-Am creat doua structuri in care retin pentru fiecare thread toate informatiile
+Am creat o structura in care retin pentru fiecare thread toate informatiile
 necesare pe parcurs. Functia run_genetic_algorithm() din /skel este paralelizata
 in functia *thread_func2() careia ii pasez ca argument structura ce detine toate
 variabilele de care avem nevoie.
+
+Modificarie aduse de mine programului din /skel sunt urmatoarele:
+
+- in functia read_input() am introdus citirea din linia de comanda a celor doi
+parametri dati.
+- in functia de compute_fitness_function() am modificat lista de argumente pe
+care le primeste. Am paralelizat aceasta functie alegand sa calculez indicii
+primului for in functie de thread-ul curent (acesti indici sunt calculati
+inainte de a intra in aceasta functie deoarece am considerat ca am in acest fel
+o siguranta ca se vor calcula bine si nu vor exista probleme de calcul din cauza
+thread-urilor).
+- in functia cmpfunc() am ales sa elimin for-ul in care se calcula numarul de
+valori din vectorul cromozomilor, astfel scurtand timpul de rulare intr-o mare
+masura deoarece in acest moment eu fac doar o scadere de valori si nu un calcul
+intreg in care numar la fiecare comparare cate valori se afla in acel vector.
+- functia thread_func2() este functia 'mama', cea in care se realizeaza toate
+calculele necesare unui rezultat corect. In aceasta functie am paralelizat
+for-urile din interiorul for-ului mare alegand sa le calculez limitele in functie
+de indicele thread-ului curent. Functia de sortare se va realiza doar pe un
+singur thread deoarece nu dorim sa se efectueze aceleasi calcule de mai multe
+ori. Dupa functiile de compute_fitness_function(), qsort(), crossover() si
+print_best_function() am pus bariere pentru a astepta toate thread-urile sa
+faca aceleasi calcule, ca nu cumva operatiile viitoare sa aiba un rezultat
+gresit deoarece calculul unui thread nu era deja efectuat.
+- in functia main() initializez vectorul meu de structuri, creez thread-urile
+si barierele si apelez functia principala.
+
+Feedback: Tema a fost ok, daca erai destul de atent o puteai rezolva intr-o
+singura zi. Acesta nu a fost si cazul meu :) deoarece am ramas multe zile
+blocata in unele erori care proveneau din cazul unor declarari si alocari de
+memorie gresite.

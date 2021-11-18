@@ -10,49 +10,18 @@
 #define MIN(A, B) (((A) < (B)) ? (A) : (B))
 #define MAX(A, B) (((A) < (B)) ? (B) : (A))
 
-
-typedef struct auxStruct {
+typedef struct mainStruct {
+	int thread_id;
+	individual *dest;
 	pthread_barrier_t *barrier;
-	pthread_mutex_t *mutex;
 	sack_object *objects;
 	int object_count;
 	int generations_count;
 	int sack_capacity;
 	int P;
-} auxStruct;
-
-typedef struct mainStruct {
-	int thread_id;
-	auxStruct *global;
-	individual *dest;
+	individual *current_generation;
+	individual *next_generation;
 } mainStruct;
-
-// alocam memorie
-mainStruct *init(pthread_barrier_t *barrier, int thread_id, sack_object *objects,
-				int object_count, int generations_count, int sack_capacity, int P, pthread_mutex_t *mutex) {
-	mainStruct *myStruct;
-	myStruct = malloc(sizeof(mainStruct));
-
-	myStruct->thread_id = thread_id;
-
-	auxStruct *aux_struct = malloc(sizeof(auxStruct));
-
-	aux_struct->barrier = barrier;
-	aux_struct->objects = objects;
-	aux_struct->object_count = object_count;
-	aux_struct->generations_count = generations_count;
-	aux_struct->sack_capacity = sack_capacity;
-	aux_struct->P = P;
-	aux_struct->mutex = mutex;
-
-	myStruct->global = aux_struct;
-	myStruct->dest = malloc(sizeof(individual) * object_count);
-
-	return myStruct;
-}
-
-void copy_individual(const individual *from, const individual *to);
-void free_generation(individual *generation);
 
 int read_input(sack_object **objects, int *object_count, int *sack_capacity, int *generations_count, int *P, int argc, char *argv[])
 {
@@ -92,7 +61,7 @@ int read_input(sack_object **objects, int *object_count, int *sack_capacity, int
 
 	*generations_count = (int) strtol(argv[2], NULL, 10);
 
-	*P = atoi(argv[3]); // mine
+	*P = atoi(argv[3]);
 
 	if (*generations_count == 0) {
 		free(tmp_objects);
@@ -128,42 +97,36 @@ void print_best_fitness(const individual *generation)
 	printf("%d\n", generation[0].fitness);
 }
 
-void compute_fitness_function(mainStruct *myStruct, individual *generation)//, int start, int end)
+void compute_fitness_function(mainStruct *myStruct, int start, int end)
 {
 	int weight;
 	int profit;
 
-	for (int i = 0; i < myStruct->global->object_count; ++i) {
+	for (int i = start; i < end; ++i) {
 		weight = 0;
 		profit = 0;
 
-		for (int j = 0; j < generation[i].chromosome_length; ++j) {
-			if (generation[i].chromosomes[j]) {
-				weight += myStruct->global->objects[j].weight;
-				profit += myStruct->global->objects[j].profit;
+		for (int j = 0; j < myStruct->current_generation[i].chromosome_length; ++j) {
+			if (myStruct->current_generation[i].chromosomes[j]) {
+				weight += myStruct->objects[j].weight;
+				profit += myStruct->objects[j].profit;
+				myStruct->current_generation[i].count_chromosomes++;
 			}
 		}
-
-		generation[i].fitness = (weight <= myStruct->global->sack_capacity) ? profit : 0;
+		myStruct->current_generation[i].fitness = (weight <= myStruct->sack_capacity) ? profit : 0;
 	}
 }
 
 int cmpfunc(const void *a, const void *b)
 {
-	int i;
 	individual *first = (individual *) a;
 	individual *second = (individual *) b;
 
 	int res = second->fitness - first->fitness; // decreasing by fitness
 	if (res == 0) {
-		int first_count = 0, second_count = 0;
 
-		for (i = 0; i < first->chromosome_length && i < second->chromosome_length; ++i) {
-			first_count += first->chromosomes[i];
-			second_count += second->chromosomes[i];
-		}
+		res = first->count_chromosomes - second->count_chromosomes;
 
-		res = first_count - second_count; // increasing by number of objects in the sack
 		if (res == 0) {
 			return second->index - first->index;
 		}
@@ -171,313 +134,10 @@ int cmpfunc(const void *a, const void *b)
 	return res;
 }
 
-int cmpfunc2(individual *a, individual *b)
-{
-	int i;
-	individual *first = a;
-	individual *second = b;
-
-	int res = second->fitness - first->fitness; // decreasing by fitness
-	if (res == 0) {
-		int first_count = 0, second_count = 0;
-
-		for (i = 0; i < first->chromosome_length && i < second->chromosome_length; ++i) {
-			first_count += first->chromosomes[i];
-			second_count += second->chromosomes[i];
-		}
-
-		res = first_count - second_count; // increasing by number of objects in the sack
-		if (res == 0) {
-			return second->index - first->index;
-		}
-	}
-	return res;
-}
-
-
-void interclasare(individual* v, individual* v_aux, int start, int mid, int end, int thid, mainStruct *workStruct) {
-	int p1 = start;
-	int p2 = mid;
-	int cur_ind = start;
-
-	for(int i = start; i <= end; i++) {
-		printf("%d ", v[i].fitness);
-	}
-	printf("\n\n");
-
-
-	while (p1 < mid && p2 < end) {
-		if (cmpfunc2(&v[p1], &v[p2]) <= 0) {
-			printf("cu cine intri?   %d %d  thre %d\n\n", v[p1].fitness, v[p2].fitness, thid);
-			v_aux[cur_ind++] = v[p2++];
-		} else {
-			v_aux[cur_ind++] = v[p1++];
-		}
-	}
-	while (p1 < mid) {
-		v_aux[cur_ind++] = v[p1++];
-        }
-	while (p2 < end) {
-                v_aux[cur_ind++] = v[p2++];
-        }
-
-	for (int i = start; i < end; ++i) {
-		v[i] = v_aux[i];
-	}
-	// pthread_mutex_unlock(workStruct->global->mutex);
-
-	for(int i = start; i <= end; i++) {
-		printf("%d ", v[i].fitness);
-	}
-	printf("\n\n");
-}
-
-void merge(mainStruct *workStruct, individual *current_generation) {
-	int thread_id = workStruct->thread_id;
-	for (int w = 1; w < workStruct->global->object_count; w *= 2) {
-		for (int start = 2 * w * thread_id; start + w < workStruct->global->object_count;
-				 start += 2 * w * workStruct->global->P) {
-			int mid = start + w;
-			int end = start + 2 * w;
-			if (end > workStruct->global->object_count) {
-				end = workStruct->global->object_count;
-			}
-			// printf("interclasare %d start %d mid %d end %d\n\n", start, mid, end, thread_id);
-			// pthread_barrier_wait (workStruct->global->barrier);
-	// pthread_mutex_lock(workStruct->global->mutex);
-
-			interclasare(current_generation, workStruct->dest, start, mid, end, thread_id, workStruct);
-	// pthread_mutex_unlock(workStruct->global->mutex);
-			// for(int i = 0; i <= workStruct->global->object_count; i++) {
-			// 	printf("%d %d\n", current_generation[i].fitness, i);
-			// }
-			// printf("\n\n");
-		}
-	//	pthread_barrier_wait (workStruct->global->barrier);
-	}
-}
-/*
-void merge(individual *source, int start, int mid, int end, individual *destination) {
-	int iA = start;
-	int iB = mid;
-	int i;
-
-	for (i = start; i < end; i++) {
-		if (end == iB || (iA < mid && cmpfunc2(&source[iA], &source[iB]) < 0 )) {
-			destination[i] = source[iA];
-			iA++;
-		} else {
-			destination[i] = source[iB];
-			iB++;
-		}
-	}
-}
-
-void merge_sort(individual *source, int low, int high, individual *destination) {
-	int mid = (low + high) / 2;
-	if(low < high) {
-		merge_sort(source, low, mid,  destination);
-		merge_sort(source, mid + 1, high,  destination);
-		merge(source, low, mid, high, destination);
-	}
-}
-
-//TODO repara functia asta sa fie pentru toate numerele, nu numai nr ^2
-void compare_func_par(individual *current_generation, mainStruct *workStruct)
-{
-	int thread_id = workStruct->thread_id;
-	int width, i;
-	individual *aux;
-
-	for (width = 1; width < workStruct->global->object_count; width = width + 1) {
-
-		int start = thread_id *  (workStruct->global->object_count / (1 + width))
-						/ workStruct->global->P * (1 + width);
-		int end = (thread_id + 1) * (workStruct->global->object_count / (1 + width))
-						 / workStruct->global->P *(1 + width);
-
-		for (i = start; i < end; i = i + 1 + width) {
-      		int right = i + 1 + width;
-      		if(right > end) right = end;
-      		int mid = i + width / 2;
-      		if(mid > end) mid = end;
-			merge_sort(current_generation, i, i + 1 + width, workStruct->dest);
-			// merge(current_generation, i, mid, i + 1 + width, workStruct->dest);
-		}
-
-		pthread_barrier_wait(workStruct->global->barrier);
-		if (thread_id == 0) {
-			aux = current_generation;
-			current_generation = workStruct->dest;
-			workStruct->dest = aux;
-		}
-
-		pthread_barrier_wait(workStruct->global->barrier);
-	}*/
-//////////////////////////////////////////
-/*
-	// int left = thread_id * workStruct->global->object_count /  workStruct->global->P;
-	// int right = (thread_id + 1) * workStruct->global->object_count /  workStruct->global->P - 1;
-
-	// if(thread_id == workStruct->global->P - 1) {
-	// 	right += workStruct->global->object_count % workStruct->global->P;
-	// }
-
-	// int middle = left + (right - left) / 2;
-	// if(left < right) {
-	// 	merge_sort(left, right, current_generation, workStruct->dest);
-	// 	merge_sort(left+1, right, current_generation, workStruct->dest);
-	// 	merge(current_generation, left, middle, right, workStruct->dest);
-	// }
-
-	// 	pthread_barrier_wait(workStruct->global->barrier);
-	// 	if (thread_id == 0) {
-	// 		aux = current_generation;
-	// 		current_generation = workStruct->dest;
-	// 		workStruct->dest = aux;
-	// 	}
-
-	// 	pthread_barrier_wait(workStruct->global->barrier);
-//////////////////////////////////////////
-	// int low = thread_id * workStruct->global->object_count / workStruct->global->P;
-	// int high = MIN(workStruct->global->object_count,(thread_id + 1) * workStruct->global->object_count / workStruct->global->P);
-
-	// int mid = low + (high - low) / 2;
-	// if (low < high) {
-	// 	merge_sort(low, mid, current_generation, workStruct->dest);
-	// 	merge_sort(mid + 1, high, current_generation, workStruct->dest);
-	// 	merge(current_generation, low, mid, high, workStruct->dest);
-	// }
-
-	// 	pthread_barrier_wait(workStruct->global->barrier);
-	// 	if (thread_id == 0) {
-	// 		aux = current_generation;
-	// 		current_generation = workStruct->dest;
-	// 		workStruct->dest = aux;
-	// 	}
-
-	// 	pthread_barrier_wait(workStruct->global->barrier);*/
-//}
-/*
-// // net
-// void merge2(individual *current_generation, int left, int middle, int right) {
-// 	int i = 0, j = 0,  k = 0;
-// 	int left_length = middle - left + 1;
-// 	int right_length = right - middle;
-// 	individual left_indiv[left_length];// = calloc(left_length, sizeof(individual));
-// 	individual right_indiv[right_length];// = calloc(right_length, sizeof(individual));
-// 	// left_indiv->chromosome_length = left_length;
-// 	// right_indiv->chromosome_length = right_indiv;
-// 	for (i = 0; i < left_length; i++) {
-// 		// copy_individual(&current_generation[left+i], &left_indiv[i]);
-// 		// left_indiv[i].chromosome_length = current_generation[left + i].chromosome_length;
-// 		// left_indiv[i].fitness = current_generation[left + i].fitness;
-// 		// left_indiv[i].index = current_generation[left + i].index;
-// 		left_indiv[i] = current_generation[left + i];
-// 	}
-
-// 	for (i = 0; i < right_length; i++) {
-// 		// copy_individual(&current_generation[middle + 1 + i], &right_indiv[i]);
-// 		// right_indiv[i].chromosome_length = current_generation[middle + i].chromosome_length;
-// 		// right_indiv[i].fitness = current_generation[middle + i].fitness;
-// 		// right_indiv[i].index = current_generation[middle + i].index;
-// 		right_indiv[i] = current_generation[middle + 1 + i];
-// 	}
-
-// 	i = 0;
-// 	while(i < left_length && j < right_length) {
-// 		if (cmpfunc2(&left_indiv[i], &right_indiv[j]) < 0) {
-// 			// copy_individual(&left_indiv[i], &current_generation[left + k]);
-// 			// current_generation[left + k].chromosome_length = left_indiv[i].chromosome_length;
-// 			// current_generation[left + k].fitness = 			 left_indiv[i].fitness;
-// 			// current_generation[left + k].index = 	         left_indiv[i].index;
-// 			current_generation[left + k] = left_indiv[i];
-// 			i++;
-// 		} else {
-// 			// copy_individual(&right_indiv[j], &current_generation[left_length + k]);
-// 			// current_generation[left + k].chromosome_length = right_indiv[j].chromosome_length;
-// 			// current_generation[left + k].fitness = 			 right_indiv[j].fitness;
-// 			// current_generation[left + k].index = 	         right_indiv[j].index;
-// 			current_generation[left + k] = right_indiv[j];
-// 			j++;
-// 		}
-// 		k++;
-// 	}
-
-// 	while(i < left_length) {
-// 		// copy_individual(&left_indiv[i], &current_generation[left + k]);
-// 		// current_generation[left + k].chromosome_length = left_indiv[i].chromosome_length;
-// 		// current_generation[left + k].fitness = 			 left_indiv[i].fitness;
-// 		// current_generation[left + k].index = 	         left_indiv[i].index;
-// 		current_generation[left +k] = left_indiv[i];
-// 		k++; i++;
-// 	}
-// 	while(j < right_length) {
-// 		// copy_individual(&right_indiv[i], &current_generation[left + k]);
-// 		// current_generation[left + k].chromosome_length = right_indiv[j].chromosome_length;
-// 		// current_generation[left + k].fitness = 			 right_indiv[j].fitness;
-// 		// current_generation[left + k].index = 	         right_indiv[j].index;
-// 		current_generation[left + k] = right_indiv[j];
-// 		k++; j++;
-// 	}
-
-// 	// free_generation(left_indiv);
-// 	// free_generation(right_indiv);
-// 	// free(left_indiv);
-// 	// free(right_indiv);
-// }
-
-// void merge_sort2(individual *current_generation, int left, int right) {
-// 	if (left < right) {
-// 		int middle = left + (right - left) / 2;
-// 		merge_sort2(current_generation, left, middle);
-// 		merge_sort2(current_generation, middle + 1, right);
-// 		merge2(current_generation, left, middle, right);
-// 	}
-// }
-
-// void merge_sections_array(individual *current_generation, mainStruct *workStruct, int number, int agg) {
-// 	for (int i = 0; i < number; i += 2) {
-// 		int left = i * workStruct->global->object_count / workStruct->global->P * agg;
-// 		int right = ((i + 2) * workStruct->global->object_count / workStruct->global->P * agg) - 1;
-// 		int middle = left + (workStruct->global->object_count / workStruct->global->P * agg) - 1;
-// 		if(right >= workStruct->global->object_count) {
-// 			right = workStruct->global->object_count - 1;
-// 		}
-
-// 		merge2(current_generation, left, middle, right);
-// 	}
-
-// 	if(number / 2 >= 1) {
-// 		merge_sections_array(current_generation, workStruct, number / 2, agg * 2);
-// 	}
-// }
-
-// void thread_merge(individual *current_generation, mainStruct *workStruct) {
-// 	int thread_id = workStruct->thread_id;
-// 	int left = thread_id * workStruct->global->object_count /  workStruct->global->P;
-// 	int right = (thread_id + 1) * workStruct->global->object_count /  workStruct->global->P - 1;
-
-// 	if(thread_id == workStruct->global->object_count - 1) {
-// 		right += workStruct->global->object_count % workStruct->global->P;
-// 	}
-// 	int middle = left + (right - left) / 2;
-// 	if (left < right) {
-// 		merge_sort2(current_generation, left, right);
-// 		merge_sort2(current_generation, left+1, right);
-// 		merge2(current_generation, left, middle, right);
-// 	}
-
-// 	// if(thread_id == 0) {
-// 	// 	merge_sections_array(current_generation, workStruct, workStruct->global->P, 1);
-// 	// }
-// }
-*/
 void mutate_bit_string_1(const individual *ind, int generation_index)
 {
 	int i, mutation_size;
 	int step = 1 + generation_index % (ind->chromosome_length - 2);
-
 	if (ind->index % 2 == 0) {
 		// for even-indexed individuals, mutate the first 40% chromosomes by a given step
 		mutation_size = ind->chromosome_length * 4 / 10;
@@ -496,7 +156,6 @@ void mutate_bit_string_1(const individual *ind, int generation_index)
 void mutate_bit_string_2(const individual *ind, int generation_index)
 {
 	int step = 1 + generation_index % (ind->chromosome_length - 2);
-
 	// mutate all chromosomes by a given step
 	for (int i = 0; i < ind->chromosome_length; i += step) {
 		ind->chromosomes[i] = 1 - ind->chromosomes[i];
@@ -505,7 +164,6 @@ void mutate_bit_string_2(const individual *ind, int generation_index)
 
 void crossover(individual *parent1, individual *child1, int generation_index)
 {
-
 	individual *parent2 = parent1 + 1;
 	individual *child2 = child1 + 1;
 	int count = 1 + generation_index % parent1->chromosome_length;
@@ -530,178 +188,112 @@ void free_generation(individual *generation)
 		free(generation[i].chromosomes);
 		generation[i].chromosomes = NULL;
 		generation[i].fitness = 0;
+		generation[i].count_chromosomes = 0;
 	}
-}
-
-int *intersection(int a1, int b1, int a2, int b2) {
-	int *rez = calloc(2, sizeof(int));
-	if(a2 < b1) {
-		rez[0] = MAX(a1, a2);
-		rez[1] = MIN(b1, b2);
-	}
-
-	return rez;
 }
 
 void *thread_func2(void *arg) {
 
 	mainStruct *workStruct = (mainStruct *)arg;
 	int count, cursor;
-	individual *current_generation = (individual*) calloc(workStruct->global->object_count, sizeof(individual));
-	individual *next_generation = (individual*) calloc(workStruct->global->object_count, sizeof(individual));
+
 	individual *tmp = NULL;
 
-	// set initial generation (composed of object_count individuals with a single item in the sack)
+	int start_c1 = workStruct->object_count * workStruct->thread_id / workStruct->P;
+	int end_c1 = MIN(workStruct->object_count, workStruct->object_count * (workStruct->thread_id + 1) / workStruct->P);
 
-	for (int i = 0; i < workStruct->global->object_count; ++i) {
-		current_generation[i].fitness = 0;
-		current_generation[i].chromosomes = (int*) calloc(workStruct->global->object_count, sizeof(int));
-		current_generation[i].chromosomes[i] = 1;
-		current_generation[i].index = i;
-		current_generation[i].chromosome_length = workStruct->global->object_count;
+	count = workStruct->object_count * 2 / 10;
+	int start2 = count * workStruct->thread_id / workStruct->P;
+	int end2 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->P);
 
-		next_generation[i].fitness = 0;
-		next_generation[i].chromosomes = (int*) calloc(workStruct->global->object_count, sizeof(int));
-		next_generation[i].index = i;
-		next_generation[i].chromosome_length = workStruct->global->object_count;
-	}
-	// iterate for each generation
+	count = workStruct->object_count * 2 / 10;
+	int start3 = count * workStruct->thread_id / workStruct->P;
+	int end3 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->P);
 
-	// int start_c1 = workStruct->global->object_count * workStruct->thread_id / workStruct->global->P;
-	// int end_c1 = MIN(workStruct->global->object_count, workStruct->global->object_count * (workStruct->thread_id + 1) / workStruct->global->P);
+	int start5 = workStruct->object_count * workStruct->thread_id / workStruct->P;
+	int end5 = MIN(workStruct->object_count, (workStruct->thread_id + 1) *
+					 workStruct->object_count / workStruct->P);
 
-	// count = workStruct->global->object_count * 3 / 10;
-	// int start1 = count * workStruct->thread_id / workStruct->global->P;
-	// int end1 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->global->P);
-
-	count = workStruct->global->object_count * 2 / 10;
-	int start2 = count * workStruct->thread_id / workStruct->global->P;
-	int end2 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->global->P);
-
-	count = workStruct->global->object_count * 2 / 10;
-	int start3 = count * workStruct->thread_id / workStruct->global->P;
-	int end3 = MIN(count, count * (workStruct->thread_id + 1) / workStruct->global->P);
-
-	int start5 = workStruct->global->object_count * workStruct->thread_id / workStruct->global->P;
-	int end5 = MIN(workStruct->global->object_count, (workStruct->thread_id + 1) *
-					 workStruct->global->object_count / workStruct->global->P);
-
-	for (int k = 0; k < workStruct->global->generations_count; ++k) {
+	for (int k = 0; k < workStruct->generations_count; ++k) {
 		cursor = 0;
 
-		compute_fitness_function(workStruct, current_generation);//, start_c1, end_c1);
+		compute_fitness_function(workStruct, start_c1, end_c1);
 
-		pthread_barrier_wait(workStruct->global->barrier);
+		pthread_barrier_wait(workStruct->barrier);
 
-		 if(workStruct->thread_id == 0) {
-			qsort(current_generation, workStruct->global->object_count, sizeof(individual), cmpfunc);
-			// compare_func_par(current_generation, workStruct);
-			// thread_merge(current_generation, workStruct);
-		 }
-		// for(int j = 0; j < workStruct->global->object_count; j++) {
-		// 	printf("%d  j  %d fit  %d thre %d gen\n",j, current_generation[j].fitness, workStruct->thread_id, k);
-		// }
-		// printf("\n\n");
-			// merge(workStruct, current_generation);
-		//  }
-;
-
-		pthread_barrier_wait(workStruct->global->barrier);
-
-		// pthread_mutex_lock(workStruct->global->mutex);
-		// merge_sections_array(current_generation, workStruct, workStruct->global->P, 1);
-		// pthread_mutex_unlock(workStruct->global->mutex);
-
-		count = workStruct->global->object_count * 3 / 10;
-		// TODO asta paralelizat nu intra in timp pentru ./in1 10 dar celelalte dau corect
-		for (int i = 0; i < count; ++i) {
-			copy_individual(current_generation + i, next_generation + i);
+		if(workStruct->thread_id == 0) {
+			qsort(workStruct->current_generation, workStruct->object_count, sizeof(individual), cmpfunc);
 		}
-		pthread_barrier_wait(workStruct->global->barrier);
+		pthread_barrier_wait(workStruct->barrier);
+
+		count = workStruct->object_count * 3 / 10;
+		for (int i = 0; i < count; ++i) {
+			copy_individual(workStruct->current_generation + i, workStruct->next_generation + i);
+			(workStruct->next_generation + i)->count_chromosomes = (workStruct->current_generation + i)->count_chromosomes;
+		}
 
 		cursor = count;
 
-		count = workStruct->global->object_count * 2 / 10;
+		count = workStruct->object_count * 2 / 10;
 		for (int i = start2; i < end2; ++i) {
-			copy_individual(current_generation + i, next_generation + cursor + i);
-			mutate_bit_string_1(next_generation + cursor + i, k);
+			copy_individual(workStruct->current_generation + i, workStruct->next_generation + cursor + i);
+			(workStruct->next_generation + cursor + i)->count_chromosomes = (workStruct->current_generation + i)->count_chromosomes;
+			mutate_bit_string_1(workStruct->next_generation + cursor + i, k);
 		}
-		pthread_barrier_wait(workStruct->global->barrier);
 
 		cursor += count;
-		count = workStruct->global->object_count * 2 / 10;
+		count = workStruct->object_count * 2 / 10;
 		for (int i = start3; i < end3; ++i) {
-			copy_individual(current_generation + i + count, next_generation + cursor + i);
-			mutate_bit_string_2(next_generation + cursor + i, k);
+			copy_individual(workStruct->current_generation + i + count, workStruct->next_generation + cursor + i);
+			(workStruct->next_generation + i + cursor)->count_chromosomes = (workStruct->current_generation + i + count)->count_chromosomes;
+			mutate_bit_string_2(workStruct->next_generation + cursor + i, k);
 		}
-		pthread_barrier_wait(workStruct->global->barrier);
 		cursor += count;
 
-		count = workStruct->global->object_count * 3 / 10;
+		count = workStruct->object_count * 3 / 10;
 		if (count % 2 == 1) {
-			copy_individual(current_generation + workStruct->global->object_count - 1, next_generation + cursor + count - 1);
+			copy_individual(workStruct->current_generation + workStruct->object_count - 1, workStruct->next_generation + cursor + count - 1);
+			(workStruct->next_generation + cursor + count - 1)->count_chromosomes = (workStruct->current_generation + workStruct->object_count - 1)->count_chromosomes;
 			count--;
 		}
 
 		for (int i = 0; i < count; i += 2) {
-			crossover(current_generation + i, next_generation + cursor + i, k);
+			crossover(workStruct->current_generation + i, workStruct->next_generation + cursor + i, k);
 		}
-		pthread_barrier_wait(workStruct->global->barrier);
+		pthread_barrier_wait(workStruct->barrier);
 
-		tmp = current_generation;
-		current_generation = next_generation;
-		next_generation = tmp;
-		pthread_barrier_wait(workStruct->global->barrier);
+		tmp = workStruct->current_generation;
+		workStruct->current_generation = workStruct->next_generation;
+		workStruct->next_generation = tmp;
 
 		for (int i = start5; i < end5; ++i) {
-			current_generation[i].index = i;
+			workStruct->current_generation[i].index = i;
 		}
 
 		if (k % 5 == 0 && workStruct->thread_id == 0) {
-			print_best_fitness(current_generation);
+			print_best_fitness(workStruct->current_generation);
 		}
-		pthread_barrier_wait(workStruct->global->barrier);
+		pthread_barrier_wait(workStruct->barrier);
 
 	}
 
-	pthread_barrier_wait(workStruct->global->barrier);
-
-	// TODO aici rezolva compute !!!
-	compute_fitness_function(workStruct, current_generation);//, start_c1, end_c1);
-	pthread_barrier_wait(workStruct->global->barrier);
-	// if(workStruct->thread_id == 0) {
-	// 	qsort(current_generation, workStruct->global->object_count, sizeof(individual), cmpfunc);
-	// }
-	// if(workStruct->thread_id == 0) {
-	// 	for(int i = 0; i < workStruct->global->object_count; i++) {
-	// 	printf("%d %d %d \n", current_generation[i].fitness, i, workStruct->thread_id);
-	// }
-	// printf("\n\n");
-	//}
-			merge(workStruct, current_generation);
-	// 		for(int i = 0; i < workStruct->global->object_count; i++) {
-	// 	printf("%d %d %d \n", current_generation[i].fitness, i, workStruct->thread_id);
-	// }
-	// printf("\n\n");
-	//}
-	pthread_barrier_wait(workStruct->global->barrier);
-
-
-
-	// compare_func_par(current_generation, workStruct);
-
+	compute_fitness_function(workStruct, start_c1, end_c1);
+	pthread_barrier_wait(workStruct->barrier);
+	if(workStruct->thread_id == 0) {
+		qsort(workStruct->current_generation, workStruct->object_count, sizeof(individual), cmpfunc);
+	}
+	pthread_barrier_wait(workStruct->barrier);
 
 	if(workStruct->thread_id == 0) {
-		print_best_fitness(current_generation);
+		print_best_fitness(workStruct->current_generation);
+		free_generation(workStruct->current_generation);
+		free_generation(workStruct->next_generation);
+
+		// free resources
+		free(workStruct->current_generation);
+		free(workStruct->next_generation);
 	}
-
-	// free resources for old generation
-	// free_generation(current_generation);
-	free_generation(next_generation);
-
-	// free resources
-	// free(current_generation);
-	free(next_generation);
+	pthread_barrier_wait(workStruct->barrier);
 
 	pthread_exit(NULL);
 }
@@ -728,38 +320,52 @@ int main(int argc, char *argv[])
 
 	pthread_t tid[P];
 	pthread_barrier_t barrier;
-	pthread_mutex_t mutex;
 
 	pthread_barrier_init(&barrier, NULL, P);
-	pthread_mutex_init(&mutex, NULL);
 
-	// alocam un vector de pointeri la structuri
-	mainStruct **aux = malloc(sizeof(mainStruct *) * P);
+	mainStruct aux[P];
+	individual *current_generation = (individual*) calloc(object_count, sizeof(individual));
+	individual *next_generation = (individual*) calloc(object_count, sizeof(individual));
+	for (int i = 0; i < object_count; ++i) {
+		current_generation[i].fitness = 0;
+		current_generation[i].chromosomes = (int*) calloc(object_count, sizeof(int));
+		current_generation[i].chromosomes[i] = 1;
+		current_generation[i].count_chromosomes = 1;
+		current_generation[i].index = i;
+		current_generation[i].chromosome_length = object_count;
 
-	// create the threads
-	for (int i = 0; i < P; i++) {
-		aux[i] = init(&barrier, i, objects, object_count, generations_count, sack_capacity, P, &mutex);
+		next_generation[i].fitness = 0;
+		next_generation[i].chromosomes = (int*) calloc(object_count, sizeof(int));
+		next_generation[i].index = i;
+		next_generation[i].count_chromosomes = 1;
+		next_generation[i].chromosome_length = object_count;
 	}
-
 	for (int i = 0; i < P; i++) {
-		pthread_create(&tid[i], NULL, thread_func2, (void *)aux[i]);
+		aux[i].P = P;
+		aux[i].thread_id = i;
+		aux[i].sack_capacity = sack_capacity;
+		aux[i].objects = objects;
+		aux[i].object_count=object_count;
+		aux[i].next_generation = next_generation;
+		aux[i].current_generation = current_generation;
+		aux[i].dest =  malloc(sizeof(individual) * object_count);
+		aux[i].barrier = &barrier;
+		aux[i].generations_count = generations_count;
+
+		pthread_create(&tid[i], NULL, thread_func2, &aux[i]);
 	}
 
 	for (int i = 0; i < P; i++) {
 		pthread_join(tid[i], NULL);
 	}
 
-	pthread_mutex_destroy(&mutex);
 	pthread_barrier_destroy(&barrier);
 
 	free(objects);
 
 	for(int i = 0; i < P; i ++) {
-		free(aux[i]->global);
-		free(aux[i]->dest);
-		free(aux[i]);
+		free(aux[i].dest);
 	}
-	free(aux);
 
 	return 0;
 }
